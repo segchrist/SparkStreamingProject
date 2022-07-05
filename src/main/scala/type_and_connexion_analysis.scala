@@ -1,5 +1,7 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.catalyst.dsl.expressions.StringToAttributeConversionHelper
+import org.apache.spark.sql.functions.{col, _}
+import org.apache.spark.sql.streaming.Trigger
 
 object type_and_connexion_analysis extends App {
 
@@ -16,53 +18,61 @@ object type_and_connexion_analysis extends App {
     .read
     .format("csv")
     .option("inferSchema","true")
-    .option("header","true")
     .option("delimiter", ";")
-    .load("src/files/vlille-realtime.csv")
+    .option("header","true")
+    .load("src/datas/Vlib*.csv")
 
   // definir le schema pour le streaming
-  val vlibSchema = vlibdf.schema
-
+//  val newColumns = Seq("ID","Name", "Working","Capacity","FreeParking","TotalNumberOfBike", "AvailableMechanicBikes","AvailableElectricBikes",
+//    "AvailablePaymentTerminal","VelibPossibleReturn","LastUpdate","Location","Municipality","INSEECode")
+  vlibdf.printSchema()
   val vlibStream = sparkSession.readStream
-    .schema(vlibSchema)
+    .schema(vlibdf.schema)
     .option("maxFilesPerTrigger",1)
+    .option("encoding","utf-8")
     .format("csv")
     .option("header","true")
     .option("delimiter", ";")
-    .load("src/files/vlille-realtime*.csv")
+    .load("src/datas/Vlib*.csv")
 
-  println("V Lille is streaming: " + vlibStream.isStreaming)
-  vlibdf.show()
+  println("VLib is streaming: " + vlibStream.isStreaming)
+  //vlibdf.show()
 
-
-  val veloDispoPerEtatConnexion = vlibStream
+  val elBikepermunicipality = vlibStream
     .selectExpr(
-      "type",
-      "nbVelosDispo",
-      "datemiseajour"
+      "Municipality",
+      "AvailableElectricBikes",
+      "TotalNumberOfBike",
+      "LastUpdate"
     )
     .groupBy(
-      col("type"), window(col("datemiseajour"),"1 hour")
+      col("Municipality"), window(col("LastUpdate"),"1 hour"),col("TotalNumberOfBike")
     )
-    .sum("nbVelosDispo").as("total_num")
+    .sum("AvailableElectricBikes")
+    .withColumnRenamed("sum(AvailableElectricBikes)","nbElectricBike")
+    .orderBy(col("TotalNumberOfBike").desc)
 
-  veloDispoPerEtatConnexion.writeStream
-    .format("memory") // memory = store in-memory table
-    .queryName("connexionvelodispo_stream") // the name of the in-memory table
-    .outputMode("complete") // complete = all the counts should be in the table
+  /*val newdf = elBikepermunicipality.selectExpr("Municipality" ,"ElecBikePercentage").where("Municipality == 'Paris'")
+    newdf.show()*/
+  val query =  elBikepermunicipality.writeStream
+    .format("console") // memory = store in-memory table
+    //.queryName("availableBikePerMunicipality") // the name of the in-memory table
+    //.option("checkpointlocation","src/checkpoint")
+    .outputMode("append") // complete = all the counts should be in the table
     .start()
+  query.awaitTermination()
 
 
-  for (i <- 1 to 50 ) {
+/*  for (i <- 1 to 50 ) {
     sparkSession.sql(
 
       """
-        |select * from connexionvelodispo_stream
-        |order by `sum(nbVelosDispo)` DESC
+        |select * from availableBikePerMunicipality
         |""".stripMargin)
       .show(false)
 
     Thread.sleep(1000)
-  }
+  }*/
+
 
 }

@@ -31,10 +31,19 @@ object main extends App {
     .load("src/files/vlille-realtime.csv")
 
   println("V Lille is streaming: " + vlibStream.isStreaming)
-  vlibdf.show()
+  //vlibdf.show()
+  println(vlibSchema)
   // Aggregation
+
+  val velo_per_etat = vlibdf
+    .select("etatConnexion","nbVelosDispo")
+    .groupBy(
+      col("etatConnexion")
+    )
+    .sum("nbVelosDispo").as("total_num")
+
+  velo_per_etat.show(false)
   /*
-  vlibdf.select(count("StockCode")).show(false)
   vlibdf.select(countDistinct("StockCode")).show(false)
   vlibdf.select(approx_count_distinct("StockCode", 0.02)).show(false)
   vlibdf.select(first("StockCode"), last("StockCode")).show(false)
